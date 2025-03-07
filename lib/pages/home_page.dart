@@ -16,6 +16,7 @@ class _HomePageState extends State<HomePage> {
   final DatabaseHelper _databaseHelper = DatabaseHelper();
   late DateTime _currentTime;
   late Timer _timer;
+  Map<String, String> _settings = {};
 
   @override
   void initState() {
@@ -25,6 +26,14 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _currentTime = DateTime.now();
       });
+    });
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final settings = await _databaseHelper.getSettings();
+    setState(() {
+      _settings = settings;
     });
   }
 
@@ -43,10 +52,13 @@ class _HomePageState extends State<HomePage> {
 
     if (currentPassword.isEmpty) {
       // If no password is set, directly navigate to settings
-      Navigator.push(
+      final result = await Navigator.push<bool>(
         context,
         MaterialPageRoute(builder: (context) => const SettingsPage()),
       );
+      if (result == true) {
+        _loadSettings(); // Reload settings if changes were saved
+      }
       return;
     }
 
@@ -59,12 +71,15 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (authenticated == true && mounted) {
-      Navigator.push(
+      final result = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
           builder: (context) => const SettingsPage(isPreAuthenticated: true),
         ),
       );
+      if (result == true) {
+        _loadSettings(); // Reload settings if changes were saved
+      }
     }
   }
 
@@ -177,10 +192,172 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Color _getButtonBackgroundColor(int buttonIndex) {
+    try {
+      final color1 =
+          _settings['buttonBackgroundColor1_$buttonIndex'] ?? '#d3d3d3';
+      final color2 =
+          _settings['buttonBackgroundColor2_$buttonIndex'] ?? '#D8E6FF';
+
+      return Color(int.parse(color1.replaceAll('#', '0xFF')));
+    } catch (e) {
+      return Colors.grey.shade300;
+    }
+  }
+
+  Color _getButtonTextColor(int buttonIndex) {
+    try {
+      final color = _settings['buttonTextColor$buttonIndex'] ?? '#000000';
+      return Color(int.parse(color.replaceAll('#', '0xFF')));
+    } catch (e) {
+      return Colors.black87;
+    }
+  }
+
+  Widget _buildServiceButton(int index) {
+    final buttonIndex = index + 1;
+    final firstTitle =
+        _settings['buttonFirstTitle$buttonIndex']?.isNotEmpty == true
+            ? _settings['buttonFirstTitle$buttonIndex']!
+            : 'Button $buttonIndex Title';
+    final secondTitle = _settings['buttonSecondTitle$buttonIndex'] ?? '';
+    final isDropDown =
+        _settings['buttonConvertToDropDown$buttonIndex']?.toLowerCase() ==
+        'true';
+    final dropDownChoices =
+        _settings['buttonDropDownChoices$buttonIndex']?.split(',') ?? [];
+    final showWaitingTime =
+        _settings['buttonShowWaitingTime$buttonIndex']?.toLowerCase() == 'true';
+    final showQueueLength =
+        _settings['buttonShowTicketBehind$buttonIndex']?.toLowerCase() ==
+        'true';
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: _getButtonBackgroundColor(buttonIndex),
+        ),
+        child: InkWell(
+          onTap: () async {
+            final phoneNumber = await Navigator.push<String>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PhoneNumberPage(serviceTitle: firstTitle),
+              ),
+            );
+
+            if (phoneNumber != null) {
+              // TODO: Handle the phone number submission
+              // You can process the queue registration here
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  firstTitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: _getButtonTextColor(buttonIndex),
+                  ),
+                ),
+                if (secondTitle.isNotEmpty && !isDropDown) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    secondTitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _getButtonTextColor(buttonIndex),
+                    ),
+                  ),
+                ],
+                if (isDropDown && dropDownChoices.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  DropdownButton<String>(
+                    value: dropDownChoices.first,
+                    items:
+                        dropDownChoices.map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(
+                              value.trim(),
+                              style: TextStyle(
+                                color: _getButtonTextColor(buttonIndex),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                    onChanged: (_) {}, // We'll handle this later
+                    style: TextStyle(
+                      color: _getButtonTextColor(buttonIndex),
+                      fontSize: 14,
+                    ),
+                    underline: Container(),
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: _getButtonTextColor(buttonIndex),
+                    ),
+                  ),
+                ],
+                if (showWaitingTime || showQueueLength) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (showWaitingTime)
+                        Text(
+                          '~10 min',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _getButtonTextColor(
+                              buttonIndex,
+                            ).withOpacity(0.8),
+                          ),
+                        ),
+                      if (showWaitingTime && showQueueLength)
+                        Text(
+                          ' | ',
+                          style: TextStyle(
+                            color: _getButtonTextColor(
+                              buttonIndex,
+                            ).withOpacity(0.8),
+                          ),
+                        ),
+                      if (showQueueLength)
+                        Text(
+                          '5 ahead',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _getButtonTextColor(
+                              buttonIndex,
+                            ).withOpacity(0.8),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    String formattedDate = DateFormat('EEE, d MMM yyyy HH:mm:ss').format(_currentTime);
-    
+    String formattedDate = DateFormat(
+      'EEE, d MMM yyyy HH:mm:ss',
+    ).format(_currentTime);
+
     return Scaffold(
       backgroundColor: const Color(0xFF0066CB),
       appBar: AppBar(
@@ -189,7 +366,10 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: _openSettings,
+            onPressed: () async {
+              await _openSettings();
+              _loadSettings(); // Reload settings when returning from settings page
+            },
           ),
         ],
       ),
@@ -220,10 +400,7 @@ class _HomePageState extends State<HomePage> {
                 // Date and Time
                 Text(
                   formattedDate,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
                 ),
                 const SizedBox(height: 40),
                 // Select Service Text
@@ -236,53 +413,21 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Your button grid or list will go here
+                // Service Buttons Grid
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 1.5,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 1.5,
+                          ),
                       itemCount: 6,
-                      itemBuilder: (context, index) {
-                        return Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: InkWell(
-                            onTap: () async {
-                              final phoneNumber = await Navigator.push<String>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => PhoneNumberPage(
-                                    serviceTitle: 'Button ${index + 1} Title',
-                                  ),
-                                ),
-                              );
-                              
-                              if (phoneNumber != null) {
-                                // TODO: Handle the phone number submission
-                                // You can process the queue registration here
-                              }
-                            },
-                            child: Center(
-                              child: Text(
-                                'Button ${index + 1}\nTitle',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                      itemBuilder:
+                          (context, index) => _buildServiceButton(index),
                     ),
                   ),
                 ),

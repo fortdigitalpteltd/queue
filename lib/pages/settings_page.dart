@@ -275,6 +275,7 @@ class _SettingsPageState extends State<SettingsPage>
           const SnackBar(
             content: Text('Settings saved successfully'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -284,6 +285,7 @@ class _SettingsPageState extends State<SettingsPage>
           SnackBar(
             content: Text('Error saving settings: $e'),
             backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -1222,7 +1224,39 @@ class _SettingsPageState extends State<SettingsPage>
             ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () async {
+                // Show confirmation dialog before going back
+                final shouldSave = await showDialog<bool>(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: const Text('Save Changes?'),
+                      content: const Text('Do you want to save your changes before going back?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('No'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0066CB),
+                          ),
+                          child: const Text('Yes'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+
+                if (shouldSave == true) {
+                  await _saveSettings();
+                }
+                
+                if (mounted) {
+                  Navigator.of(context).pop(true); // Return true to indicate settings were changed
+                }
+              },
             ),
             actions: [
               // Wrap printer status and bluetooth button in a row
