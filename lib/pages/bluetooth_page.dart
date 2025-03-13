@@ -2,23 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'dart:async';
-
-class PrinterDevice {
-  final String name;
-  final String address;
-  final BluetoothDevice device;
-
-  PrinterDevice({
-    required this.name,
-    required this.address,
-    required this.device,
-  });
-}
+import '../models/printer_device.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BluetoothPage extends StatefulWidget {
   final String printerLabel;
 
-  const BluetoothPage({Key? key, required this.printerLabel}) : super(key: key);
+  const BluetoothPage({super.key, required this.printerLabel});
 
   @override
   State<BluetoothPage> createState() => _BluetoothPageState();
@@ -44,8 +34,43 @@ class _BluetoothPageState extends State<BluetoothPage> {
     super.dispose();
   }
 
+  Future<bool> _checkPermissions() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    bool allGranted = true;
+    statuses.forEach((permission, status) {
+      if (!status.isGranted) {
+        print('${permission.toString()} is not granted: ${status.toString()}');
+        allGranted = false;
+      }
+    });
+
+    if (!allGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please grant all required permissions to scan for devices'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+
+    return allGranted;
+  }
+
   Future<void> _initBluetooth() async {
     try {
+      // Check permissions first
+      if (!await _checkPermissions()) {
+        return;
+      }
+
       // Check if Bluetooth is available
       final isAvailable = await FlutterBluePlus.isAvailable;
       if (!isAvailable) {
@@ -53,6 +78,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Bluetooth is not available on this device'),
+              backgroundColor: Colors.red,
             ),
           );
         }
@@ -61,6 +87,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
       // Listen to Bluetooth state changes
       _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
+        print('Bluetooth state changed: $state');
         if (mounted) {
           setState(() => _isBluetoothOn = state == BluetoothAdapterState.on);
           if (_isBluetoothOn) {
@@ -78,9 +105,13 @@ class _BluetoothPageState extends State<BluetoothPage> {
         }
       }
     } catch (e) {
+      print('Error in _initBluetooth: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error initializing Bluetooth: $e')),
+          SnackBar(
+            content: Text('Error initializing Bluetooth: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -88,6 +119,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   Future<void> _startScan() async {
     if (_isScanning) return;
+
+    if (!await _checkPermissions()) {
+      return;
+    }
 
     if (mounted) {
       setState(() {
@@ -97,32 +132,68 @@ class _BluetoothPageState extends State<BluetoothPage> {
     }
 
     try {
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+      // Check if Bluetooth is available and on
+      if (!await FlutterBluePlus.isAvailable || !await FlutterBluePlus.isOn) {
+        throw Exception('Bluetooth is not available or turned off');
+      }
+
+      print('Starting Bluetooth scan with settings...');
+      
+      // Set scan mode to low latency
+      await FlutterBluePlus.setLogLevel(LogLevel.verbose);
+      
+      // Start scan with specific settings
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 15),
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
 
       _scanSubscription = FlutterBluePlus.scanResults.listen(
         (results) {
+          print('Found ${results.length} devices');
           if (mounted) {
-            setState(() => _devices = results);
+            setState(() {
+              // Filter out devices with very weak signals
+              _devices = results.where((r) => r.rssi > -90).toList();
+            });
           }
         },
         onError: (e) {
+          print('Scan error: $e');
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Scan error: $e')));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Scan error: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         },
       );
 
       // When scan completes
-      await Future.delayed(const Duration(seconds: 10));
+      await Future.delayed(const Duration(seconds: 15));
       if (mounted) {
         setState(() => _isScanning = false);
+        print('Scan completed. Found ${_devices.length} devices');
+        
+        if (_devices.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No devices found. Make sure devices are turned on and in range.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
+      print('Error during scan: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to scan for devices: $e')),
+          SnackBar(
+            content: Text('Failed to scan for devices: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
         setState(() => _isScanning = false);
       }
@@ -135,38 +206,37 @@ class _BluetoothPageState extends State<BluetoothPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.print_disabled, size: 64, color: Colors.grey),
+            const Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text(
-              'No Printer Found',
-              style: TextStyle(
+            Text(
+              _isScanning ? 'Scanning for devices...' : 'No Devices Found',
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Colors.grey,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Make sure your printer is turned on and nearby',
-              style: TextStyle(color: Colors.grey),
+            Text(
+              _isScanning 
+                ? 'Please wait while we search for nearby devices'
+                : 'Make sure devices are turned on and in range',
+              style: const TextStyle(color: Colors.grey),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _isScanning ? null : _startScan,
-              icon:
-                  _isScanning
-                      ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                      : const Icon(Icons.refresh),
+              icon: _isScanning
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
               label: Text(_isScanning ? 'Scanning...' : 'Scan Again'),
             ),
           ],
@@ -178,17 +248,24 @@ class _BluetoothPageState extends State<BluetoothPage> {
       itemCount: _devices.length,
       itemBuilder: (context, index) {
         final result = _devices[index];
-        // Skip if device has no name
-        if (result.device.platformName.isEmpty) {
-          return const SizedBox.shrink();
-        }
+        final deviceName = result.device.platformName.isEmpty 
+            ? 'Unknown Device' 
+            : result.device.platformName;
+        final deviceId = result.device.remoteId.str;
+        final rssi = result.rssi;
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: ListTile(
-            leading: const Icon(Icons.print),
-            title: Text(result.device.platformName),
-            subtitle: Text(result.device.remoteId.str),
+            leading: const Icon(Icons.bluetooth),
+            title: Text(deviceName),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(deviceId),
+                Text('Signal Strength: $rssi dBm'),
+              ],
+            ),
             trailing: ElevatedButton(
               onPressed: () => _connectToDevice(result),
               child: const Text('Connect'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
+import '../database/database_helper.dart';
 
 class PhoneNumberPage extends StatefulWidget {
   final String serviceTitle;
@@ -18,6 +19,8 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   late DateTime _currentTime;
   late Timer _timer;
   final TextEditingController _phoneController = TextEditingController();
+  final DatabaseHelper _databaseHelper = DatabaseHelper();
+  Map<String, String> _settings = {};
 
   @override
   void initState() {
@@ -29,13 +32,34 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
       });
     });
     _phoneController.text = '+65';
+    _loadSettings();
   }
 
-  @override
-  void dispose() {
-    _timer.cancel();
-    _phoneController.dispose();
-    super.dispose();
+  Future<void> _loadSettings() async {
+    final settings = await _databaseHelper.getSettings();
+    if (mounted) {
+      setState(() {
+        _settings = settings;
+      });
+    }
+  }
+
+  Color _getButtonTextColor() {
+    try {
+      final color = _settings['buttonTextFontColor'] ?? '#000000';
+      return Color(int.parse(color.replaceAll('#', '0xFF')));
+    } catch (e) {
+      return Colors.black87;
+    }
+  }
+
+  Color _getButtonBackgroundColor() {
+    try {
+      final color = _settings['buttonsBackgroundColor'] ?? '#FFFFFF';
+      return Color(int.parse(color.replaceAll('#', '0xFF')));
+    } catch (e) {
+      return Colors.white;
+    }
   }
 
   void _onKeyPressed(String value) {
@@ -66,7 +90,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
             height: constraints.maxWidth * 0.9,
             margin: const EdgeInsets.all(4.0),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _getButtonBackgroundColor(),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey.shade300),
               boxShadow: [
@@ -88,9 +112,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               child: Center(
                 child: Text(
                   number,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 32,
-                    color: Colors.black87,
+                    color: _getButtonTextColor(),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -107,7 +131,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
       height: 50,
       width: 140,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _getButtonBackgroundColor(),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
@@ -128,9 +152,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
         onPressed: () => text == 'SUBMIT' ? _onKeyPressed('SUBMIT') : Navigator.pop(context),
         child: Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
-            color: Colors.black87,
+            color: _getButtonTextColor(),
             fontWeight: FontWeight.bold,
           ),
         ),

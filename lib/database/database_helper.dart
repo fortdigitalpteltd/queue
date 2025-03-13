@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -73,42 +74,36 @@ class DatabaseHelper {
     await batch.commit();
   }
 
-  Future<void> saveLoginCredentials(String username, String password) async {
-    final db = await database;
-    final batch = db.batch();
-    
-    batch.insert(
-      'settings',
-      {'key': 'username', 'value': username},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    
-    batch.insert(
-      'settings',
-      {'key': 'password', 'value': password},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    
-    await batch.commit();
+  Future<void> saveLoginCredentials(String username, String password, String linkAddress) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username', username);
+    await prefs.setString('password', password);
+    await prefs.setString('linkAddress', linkAddress);
+  }
+
+  Future<void> saveLogoUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('logoUrl', url);
+  }
+
+  Future<String?> getLogoUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('logoUrl');
   }
 
   Future<Map<String, String>> getLoginCredentials() async {
-    final db = await database;
-    final List<Map<String, dynamic>> settings = await db.query(
-      'settings',
-      where: 'key IN (?, ?)',
-      whereArgs: ['username', 'password'],
-    );
-    
-    final Map<String, String> credentials = {};
-    for (var setting in settings) {
-      credentials[setting['key'] as String] = (setting['value'] ?? '').toString();
-    }
-    
+    final prefs = await SharedPreferences.getInstance();
     return {
-      'username': credentials['username'] ?? '',
-      'password': credentials['password'] ?? '',
+      'username': prefs.getString('username') ?? '',
+      'password': prefs.getString('password') ?? '',
+      'linkAddress': prefs.getString('linkAddress') ?? '',
+      'serverDomain': prefs.getString('serverDomain') ?? 'https://singaporeq.com',
     };
+  }
+
+  Future<void> saveServerDomain(String domain) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('serverDomain', domain);
   }
 
   // Close database
