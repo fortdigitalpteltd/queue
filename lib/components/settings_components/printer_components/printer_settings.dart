@@ -156,6 +156,63 @@ class PrinterSettings extends StatelessWidget {
                           controllers['printerAddress$printerNumber']?.text =
                               printer.address;
                         });
+
+                        // Show success banner
+                        ScaffoldMessenger.of(context).showMaterialBanner(
+                          MaterialBanner(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.bluetooth_connected,
+                                  color: Colors.green,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Successfully connected',
+                                        style: TextStyle(
+                                          color: Colors.green.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        printer.name,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: Colors.green.shade50,
+                            leading: const SizedBox.shrink(),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  ScaffoldMessenger.of(
+                                    context,
+                                  ).hideCurrentMaterialBanner();
+                                },
+                                child: const Text('DISMISS'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        // Auto-hide the banner after 3 seconds
+                        Future.delayed(const Duration(seconds: 3), () {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).hideCurrentMaterialBanner();
+                          }
+                        });
                       }
                     } catch (e) {
                       if (!context.mounted) return;
